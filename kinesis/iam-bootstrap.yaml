@@ -1,0 +1,185 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation service role for explore-kinesis app stacks
+
+Parameters:
+  AppName:
+    Type: String
+    Description: Prefix for the name of the role created for the purposes of deploying the application stack. For example explore-kinesis
+    MinLength: 3
+    MaxLength: 50
+    AllowedPattern: '^[a-z][a-z0-9-]*$'
+    ConstraintDescription: Lowercase letters, numbers, and hyphens; must start with a letter
+
+Resources:
+  CfnExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AppName}-cfn-exec'
+      # PermissionsBoundary: !Sub 'arn:aws:iam::${AWS::AccountId}:policy/myapp-boundary'
+      # PermissionsBoundary: xxx
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AppName}-*/*'
+      Tags:
+        - Key: project
+          Value: !Ref AppName
+      Policies:
+        - PolicyName: !Sub '${AppName}-stack-resource-permissions'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+                # If your stacks create IAM roles themselves, you'll need iam:* scoped
+                # carefully — usually with a PermissionsBoundary to prevent privilege escalation.
+                # In bootstrap.yaml — the exec role's policy
+              - Sid: ManageRolesWithBoundary
+                Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:PutRolePolicy
+                  - iam:AttachRolePolicy
+                Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/explore-kinesis-*'
+                Condition:
+                  StringEquals:
+                    iam:PermissionsBoundary:
+                      Fn::ImportValue: explore-kinesis-boundary-arn
+              - Sid: ManageRoles
+                Effect: Allow
+                Action:
+                  - iam:DeleteRole
+                  - iam:DeleteRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:GetRole
+                  - iam:PassRole
+                  - iam:TagRole
+                Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/explore-kinesis-*'
+# - Sid: PassRolesToLambda
+#   Effect: Allow
+#   Action: iam:PassRole
+#   Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/${AppName}-*'
+#   Condition:
+#     StringEquals:
+#       iam:PassedToService: lambda.amazonaws.com
+              # Scope these to exactly what your stacks create.
+              - Sid: ManageS3Buckets
+                Effect: Allow
+                Action:
+                  - s3:CreateBucket
+                  - s3:DeleteBucket
+                  - s3:PutBucketPolicy
+                  - s3:PutBucketTagging
+                  - s3:GetBucket*
+                  - s3:PutLifecycleConfiguration
+                  - s3:PutBucketNotification
+                Resource: !Sub 'arn:aws:s3:::${AppName}-*'
+              - Sid: ReadArtifacts
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub 'arn:aws:s3:::${AppName}-artifacts-${AWS::AccountId}-${AWS::Region}-an/*'
+              - Sid: ManageLambdas
+                Effect: Allow
+                Action:
+                  - lambda:CreateFunction
+                  - lambda:UpdateFunctionCode
+                  - lambda:UpdateFunctionConfiguration
+                  - lambda:DeleteFunction
+                  - lambda:GetFunction
+                  - lambda:TagResource
+                  - lambda:AddPermission
+                  - lambda:RemovePermission
+                Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${AppName}-*'
+              - Sid: ManageLogGroups
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:DeleteLogGroup
+                  - logs:PutRetentionPolicy
+                  - logs:TagResource
+                  - logs:UntagResource
+                  - logs:ListTagsForResource
+                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/explore-kinesis-*:*'
+              - Sid: ListLogGroups
+                Effect: Allow
+                Action:
+                  - logs:DescribeLogGroups
+                Resource: '*'
+              - Sid: ManageStreams
+                Effect: Allow
+                Action:
+                  - kinesis:CreateStream
+                  - kinesis:DeleteStream
+                  - kinesis:DescribeStream
+                  - kinesis:DescribeStreamSummary
+                  - kinesis:UpdateStreamMode
+                  - kinesis:IncreaseStreamRetentionPeriod
+                  - kinesis:DecreaseStreamRetentionPeriod
+                  - kinesis:StartStreamEncryption
+                  - kinesis:StopStreamEncryption
+                  - kinesis:AddTagsToStream
+                  - kinesis:RemoveTagsFromStream
+                  - kinesis:ListTagsForStream
+                Resource: !Sub 'arn:${AWS::Partition}:kinesis:${AWS::Region}:${AWS::AccountId}:stream/${AppName}-*'
+              - Sid: ListStreams
+                Effect: Allow
+                Action:
+                  - kinesis:ListStreams
+                Resource: '*'
+              - Sid: ManageTables
+                Effect: Allow
+                Action:
+                  - s3tables:CreateTableBucket
+                  - s3tables:GetTableBucket
+                  - s3tables:DeleteTableBucket
+                  - s3tables:CreateNamespace
+                  - s3tables:GetNamespace
+                  - s3tables:DeleteNamespace
+                  - s3tables:CreateTable
+                  - s3tables:GetTable
+                  - s3tables:DeleteTable
+                  - s3tables:TagResource
+                  - s3tables:UntagResource
+                  - s3tables:ListTagsForResource
+                  - s3tables:GetTableBucketMaintenanceConfiguration
+                  - s3tables:PutTableBucketMaintenanceConfiguration
+                  - s3tables:GetTableMaintenanceConfiguration
+                  - s3tables:PutTableMaintenanceConfiguration
+                  - s3tables:GetTableBucketEncryption
+                  - s3tables:PutTableBucketEncryption
+                  - s3tables:DeleteTableBucketEncryption
+                  - s3tables:GetTableEncryption
+                  - s3tables:PutTableEncryption
+                  - s3tables:DeleteTableEncryption
+                  - s3tables:GetTableBucketMetricsConfiguration
+                  - s3tables:PutTableBucketMetricsConfiguration
+                  - s3tables:DeleteTableBucketMetricsConfiguration
+                  - s3tables:GetTableBucketReplication
+                  # - s3tables:GetTableBucketPolicy
+                  # - s3tables:PutTableBucketPolicy
+                  # - s3tables:DeleteTableBucketPolicy
+                  # - s3tables:GetTablePolicy
+                  # - s3tables:PutTablePolicy
+                  # - s3tables:DeleteTablePolicy
+                  - s3tables:GetTableBucketStorageClass
+                  - s3tables:PutTableBucketStorageClass
+                  - s3tables:PutTableData
+                  - s3tables:GetTableStorageClass
+                  - s3tables:PutTableStorageClass
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:s3tables:${AWS::Region}:${AWS::AccountId}:bucket/explore-kinesis-*'
+                  - !Sub 'arn:${AWS::Partition}:s3tables:${AWS::Region}:${AWS::AccountId}:bucket/explore-kinesis-*/table/*'
+
+Outputs:
+  RoleArn:
+    Value: !GetAtt CfnExecutionRole.Arn
+    Export:
+      Name: explore-kinesis-cfn-exec-arn
+      # Was: CfnExecutionRoleArn
