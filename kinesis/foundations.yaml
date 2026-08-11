@@ -1,0 +1,144 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Permissions boundary for explore-kinesis execution roles
+
+Resources:
+  AppBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: explore-kinesis-boundary
+      Description: Caps what any explore-kinesis-* role can do at runtime
+      # Tags:
+      #   - Key: project
+      #     Value: explore-kinesis
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # Logs: Every Lambda needs this
+          - Sid: Logs
+            Effect: Allow
+            Action:
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/explore-kinesis-*:*'
+          # S3: Read/write only the app buckets
+          - Sid: S3DataAccess
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+              - s3:GetBucketLocation
+            Resource:
+              - !Sub 'arn:aws:s3:::explore-kinesis-*'
+              - !Sub 'arn:aws:s3:::explore-kinesis-*/*'
+
+          # Kinesis: publish to app streams
+          - Sid: KinesisProduce
+            Effect: Allow
+            Action:
+              - kinesis:PutRecord
+              - kinesis:PutRecords
+            Resource: !Sub 'arn:aws:kinesis:${AWS::Region}:${AWS::AccountId}:stream/explore-kinesis-*'
+          # - Sid: KinesisProduce
+          #   Effect: Allow
+          #   Action:
+          #     - kinesis:PutRecord
+          #     - kinesis:PutRecords
+          #   Resource: !Sub 'arn:aws:kinesis:${AWS::Region}:${AWS::AccountId}:stream/explore-kinesis-*'
+
+
+          # # ---- Kinesis: consume from app streams ----
+          # - Sid: KinesisConsume
+          #   Effect: Allow
+          #   Action:
+          #     - kinesis:GetRecords
+          #     - kinesis:GetShardIterator
+          #     - kinesis:DescribeStream
+          #     - kinesis:DescribeStreamSummary
+          #     - kinesis:ListShards
+          #     - kinesis:SubscribeToShard      # enhanced fan-out
+          #     - kinesis:ListStreams           # can't be scoped, unavoidable
+          #   Resource: !Sub 'arn:aws:kinesis:${AWS::Region}:${AWS::AccountId}:stream/myapp-*'
+
+          # # ---- KMS: only if you use CMKs for S3/Kinesis encryption ----
+          # - Sid: KmsForAppData
+          #   Effect: Allow
+          #   Action:
+          #     - kms:Decrypt
+          #     - kms:GenerateDataKey
+          #     - kms:DescribeKey
+          #   Resource: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*'
+          #   Condition:
+          #     StringEquals:
+          #       kms:ViaService:
+          #         - !Sub 's3.${AWS::Region}.amazonaws.com'
+          #         - !Sub 'kinesis.${AWS::Region}.amazonaws.com'
+
+          # # ---- X-Ray: optional, harmless, often useful ----
+          # - Sid: XRay
+          #   Effect: Allow
+          #   Action:
+          #     - xray:PutTraceSegments
+          #     - xray:PutTelemetryRecords
+          #   Resource: '*'
+
+          # X-Ray: Option, harmless, often useful 
+          - Sid: XRay
+            Effect: Allow
+            Action:
+              - xray:PutTraceSegments
+              - xray:PutTelemetryRecords
+            Resource: '*'
+
+          # # ---- Explicit deny: privilege escalation primitives ----
+          # - Sid: DenyIamWrites
+          #   Effect: Deny
+          #   Action:
+          #     - iam:*
+          #     - organizations:*
+          #     - account:*
+          #   Resource: '*'
+
+          # Explicity deny: Privilege escalation primitives
+          - Sid: DenyIamWrites
+            Effect: Deny
+            Action:
+              - iam:*
+              - organizations:*
+              - account:*
+            Resource: '*'
+
+          # # ---- Explicit deny: boundary self-modification ----
+          # - Sid: DenyBoundaryTampering
+          #   Effect: Deny
+          #   Action:
+          #     - iam:DeleteRolePermissionsBoundary
+          #     - iam:PutRolePermissionsBoundary
+          #   Resource: '*'
+
+          # Explicit deny: boundary self-modification
+          - Sid: DenyBoundaryTampering
+            Effect: Deny
+            Action:
+              - iam:DeleteRolePermissionsBoundary
+              - iam:PutRolePermissionsBoundary
+            Resource: '*'
+
+# Outputs:
+#   BoundaryArn:
+#     Value: !Ref MyAppBoundary
+#     Export:
+#       Name: MyAppBoundaryArn
+
+Outputs:
+  BoundaryArn:
+    Value: !Ref AppBoundary
+    Export:
+      Name: explore-kinesis-boundary-arn
+  # The name is rarely needed
+  # BoundaryName:
+  #   Description: Name of the permssions boundary (for IAM conditions)
+  #   Value: !Ref BoundaryName
+  #   Export:
+  #     Name: explore-kinesis-boundary-name
