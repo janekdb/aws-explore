@@ -1,0 +1,51 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: explore-kinesis database stack (S3 Tables)
+
+Resources:
+  DatabaseTableBucket:
+    Type: AWS::S3Tables::TableBucket
+    Properties:
+      TableBucketName: explore-kinesis-database
+      Tags:
+        - Key: project
+          Value: explore-kinesis
+
+  WeatherNamespace:
+    Type: AWS::S3Tables::Namespace
+    Properties:
+      TableBucketARN: !GetAtt DatabaseTableBucket.TableBucketARN
+      Namespace: weather
+
+  WeatherTable:
+    Type: AWS::S3Tables::Table
+    DependsOn: WeatherNamespace
+    Properties:
+      TableBucketARN: !GetAtt DatabaseTableBucket.TableBucketARN
+      Namespace: weather
+      TableName: readings
+      OpenTableFormat: ICEBERG
+      IcebergMetadata:
+        IcebergSchema:
+          SchemaFieldList:
+            - Name: date
+              Type: date
+              Required: true
+            - Name: location
+              Type: string
+              Required: true
+            - Name: temperature
+              Type: float
+              Required: true
+            - Name: wind_speed
+              Type: float
+              Required: true
+      Tags:
+        - Key: project
+          Value: explore-kinesis
+
+Outputs:
+  TableBucketArn:
+    Value: !GetAtt DatabaseTableBucket.TableBucketARN
+    Export:
+      Name: explore-kinesis-database-table-bucket-arn
+  
