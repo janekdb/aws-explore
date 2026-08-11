@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Kinesis exploration project
+
+Parameters:
+  PublisherFunctionArn:
+    Type: String
+    Default: ''
+    Description: >-
+      ARN of the Lambda that consumes new objects in the inputs bucket and
+      publishes them to the stream. Empty on the pass-1 deploy (bucket created
+      before the function exists); set on pass 2 to wire the S3 notification.
+
+Conditions:
+  HasPublisher: !Not [!Equals [!Ref PublisherFunctionArn, '']]
+
+Resources:
+  ExploreKinesisInputBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketNamePrefix: explore-kinesis-inputs
+      BucketNamespace: account-regional
+      NotificationConfiguration:
+        !If
+          - HasPublisher
+          - LambdaConfigurations:
+              - Event: 's3:ObjectCreated:*'
+                Filter:
+                  S3Key:
+                    Rules:
+                      - Name: prefix
+                        Value: weather-reports/
+                Function: !Ref PublisherFunctionArn
+          - !Ref AWS::NoValue
+      Tags:
+        - Key: project
+          Value: explore-kinesis
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldObjects
+            Status: Enabled
+            ExpirationInDays: 2
+          - Id: Cleanup
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+  ExploreKinesisArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketNamePrefix: explore-kinesis-artifacts
+      BucketNamespace: account-regional
+      Tags:
+        - Key: project
+          Value: explore-kinesis
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldObjects
+            Status: Enabled
+            ExpirationInDays: 7
+          - Id: Cleanup
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+# # ----- Kinesis stream --------------------------------------------------
+#   WeatherStream:
+#     Type: AWS::Kinesis::Stream
+#     Properties:
+#       Name: explore-kinesis-weather
+#       StreamModeDetails:
+#         StreamMode: ON_DEMAND
+#       RetentionPeriodHours: 24
+#       StreamEncryption:
+#         EncryptionType: KMS
+#         KeyId: alias/aws/kinesis
+#       Tags:
+#         - Key: project
+#           Value: explore-kinesis
+  WeatherStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: explore-kinesis-weather
+      StreamModeDetails:
+        StreamMode: ON_DEMAND
+      RetentionPeriodHours: 24
+      StreamEncryption:
+        EncryptionType: KMS
+        KeyId: alias/aws/kinesis
+      Tags:
+        - Key: project
+          Value: explore-kinesis
+Outputs:
+  InputsBucketName:
+    Value: !Ref ExploreKinesisInputBucket
+    Description: Input data bucket
+    Export:
+      Name: explore-kinesis-inputs-bucket-name
+  ArtifactBucketName:
+    Value: !Ref ExploreKinesisArtifactBucket
+    Description: Code artifacts bucket
+    Export:
+      Name: explore-kinesis-artifacts-bucket-name
+  WeatherStreamArn:
+    Value: !GetAtt WeatherStream.Arn
+    Export:
+      Name: explore-kinesis-storage-stream-arn
+  WeatherStreamName:
+    Value: !Ref WeatherStream
+    Export:
+      Name: explore-kinesis-storage-stream-name
