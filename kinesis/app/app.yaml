@@ -1,0 +1,202 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: explore-kinesis application stack
+
+Parameters:
+  BoundaryName:
+    Type: String
+    Default: explore-kinesis-boundary
+    Description: Name of the permissions boundary applied to runtime roles
+
+Resources:
+  # -- Logs --
+  DataGeneratorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/explore-kinesis-data-generator
+      RetentionInDays: 14
+
+  # -- IAM --
+  DataGeneratorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: explore-kinesis-data-generator-role
+      PermissionsBoundary:
+        !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/${BoundaryName}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:explore-kinesis-*'
+      Policies:
+        - PolicyName: DataGeneratorInlinePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: WriteOwnLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt DataGeneratorLogGroup.Arn
+              - Sid: WriteData
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource:
+                  !Sub
+                    - 'arn:${AWS::Partition}:s3:::${BucketName}/weather-reports/*'
+                    - BucketName: !ImportValue explore-kinesis-inputs-bucket-name
+              - Sid: Trace
+                Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: '*'
+
+  # -- Function --
+  DataGeneratorFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: DataGeneratorLogGroup
+    Properties:
+      FunctionName: explore-kinesis-data-generator
+      Description: Generates data in the inputs bucket
+      Runtime: python3.14
+      Architectures: [arm64]
+      Handler: handler.main
+      Role: !GetAtt DataGeneratorRole.Arn
+      Code: src/data_generator
+      Timeout: 30
+      MemorySize: 256
+      TracingConfig:
+        Mode: Active
+      LoggingConfig:
+        LogGroup: !Ref DataGeneratorLogGroup
+        LogFormat: JSON
+        ApplicationLogLevel: INFO
+        SystemLogLevel: DEBUG
+      Environment:
+        Variables:
+          INPUTS_BUCKET: !ImportValue explore-kinesis-inputs-bucket-name
+
+  # -- Publisher: S3 (weather-reports/*) -> Kinesis --
+  PublisherLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/explore-kinesis-publisher
+      RetentionInDays: 14
+
+  PublisherRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: explore-kinesis-publisher-role
+      PermissionsBoundary:
+        !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/${BoundaryName}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:explore-kinesis-*'
+      Policies:
+        - PolicyName: PublisherInlinePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: WriteOwnLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt PublisherLogGroup.Arn
+              - Sid: ReadData
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource:
+                  !Sub
+                    - 'arn:${AWS::Partition}:s3:::${BucketName}/weather-reports/*'
+                    - BucketName: !ImportValue explore-kinesis-inputs-bucket-name
+              - Sid: PublishToStream
+                Effect: Allow
+                Action:
+                  - kinesis:PutRecord
+                  - kinesis:PutRecords
+                Resource: !ImportValue explore-kinesis-storage-stream-arn
+              - Sid: Trace
+                Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: '*'
+
+  PublisherFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: PublisherLogGroup
+    Properties:
+      FunctionName: explore-kinesis-publisher
+      Description: Reads new inputs-bucket objects and publishes records to the stream
+      Runtime: python3.14
+      Architectures: [arm64]
+      Handler: handler.main
+      Role: !GetAtt PublisherRole.Arn
+      Code: src/publisher
+      Timeout: 60
+      MemorySize: 256
+      TracingConfig:
+        Mode: Active
+      LoggingConfig:
+        LogGroup: !Ref PublisherLogGroup
+        LogFormat: JSON
+        ApplicationLogLevel: INFO
+        SystemLogLevel: DEBUG
+      Environment:
+        Variables:
+          STREAM_NAME: !ImportValue explore-kinesis-storage-stream-name
+
+  # Lets S3 invoke the publisher. SourceArn uses the fixed bucket name, so the
+  # app stack never imports the function ARN back -> no circular dependency.
+  PublisherInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PublisherFunction
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn:
+        !Sub
+          - 'arn:${AWS::Partition}:s3:::${BucketName}'
+          - BucketName: !ImportValue explore-kinesis-inputs-bucket-name
+
+Outputs:
+  DataGeneratorFunctionArn:
+    Value: !GetAtt DataGeneratorFunction.Arn
+    Export:
+      Name: explore-kinesis-app-data-generator-arn
+  
+  DataGeneratorFunctionName:
+    Value: !Ref DataGeneratorFunction
+    Export:
+      Name: explore-kinesis-app-data-generator
+
+  PublisherFunctionArn:
+    Value: !GetAtt PublisherFunction.Arn
+    Export:
+      Name: explore-kinesis-app-publisher-arn
+
+  PublisherFunctionName:
+    Value: !Ref PublisherFunction
+    Export:
+      Name: explore-kinesis-app-publisher
