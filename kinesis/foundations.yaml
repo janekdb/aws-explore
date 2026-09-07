@@ -13,14 +13,16 @@ Resources:
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
-          # Logs: Every Lambda needs this
+          # Logs ussage for Lambda and Amazon Data Firehose
           - Sid: Logs
             Effect: Allow
             Action:
               - logs:CreateLogStream
               - logs:PutLogEvents
-            Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/explore-kinesis-*:*'
-          # S3: Read/write only the app buckets
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/explore-kinesis-*:*'
+              - !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/kinesisfirehose/explore-kinesis-*:*'
+          # S3: Read/write for app buckets
           - Sid: S3DataAccess
             Effect: Allow
             Action:
@@ -29,6 +31,8 @@ Resources:
               - s3:DeleteObject
               - s3:ListBucket
               - s3:GetBucketLocation
+              - s3:AbortMultipartUpload
+              - s3:ListBucketMultipartUploads
             Resource:
               - !Sub 'arn:aws:s3:::explore-kinesis-*'
               - !Sub 'arn:aws:s3:::explore-kinesis-*/*'
@@ -49,17 +53,33 @@ Resources:
 
 
           # # ---- Kinesis: consume from app streams ----
-          # - Sid: KinesisConsume
-          #   Effect: Allow
-          #   Action:
-          #     - kinesis:GetRecords
-          #     - kinesis:GetShardIterator
-          #     - kinesis:DescribeStream
-          #     - kinesis:DescribeStreamSummary
-          #     - kinesis:ListShards
-          #     - kinesis:SubscribeToShard      # enhanced fan-out
-          #     - kinesis:ListStreams           # can't be scoped, unavoidable
-          #   Resource: !Sub 'arn:aws:kinesis:${AWS::Region}:${AWS::AccountId}:stream/myapp-*'
+          - Sid: KinesisConsume
+            Effect: Allow
+            Action:
+              - kinesis:DescribeStream
+              - kinesis:GetShardIterator
+              - kinesis:GetRecords
+              - kinesis:ListShards
+            Resource: !Sub 'arn:aws:kinesis:${AWS::Region}:${AWS::AccountId}:stream/explore-kinesis-*'
+
+          - Sid: GlueCatalogAccess
+            Effect: Allow
+            Action:
+              - glue:GetTable
+              - glue:GetDatabase
+              - glue:UpdateTable
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog'
+              - !Sub 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog/s3tablescatalog'
+              - !Sub 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog/s3tablescatalog/explore-kinesis-database'
+              - !Sub 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/*'
+              - !Sub 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/*'
+
+          - Sid: LakeFormationData
+            Effect: Allow
+            Action:
+              - lakeformation:GetDataAccess
+            Resource: '*'
 
           # # ---- KMS: only if you use CMKs for S3/Kinesis encryption ----
           # - Sid: KmsForAppData
