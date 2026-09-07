@@ -48,4 +48,11 @@ Outputs:
     Value: !GetAtt DatabaseTableBucket.TableBucketARN
     Export:
       Name: explore-kinesis-database-table-bucket-arn
-  
+  NamespaceName:
+    Value: weather
+    Export:
+      Name: explore-kinesis-database-namespace
+  TableName:
+    Value: readings
+    Export:
+      Name: explore-kinesis-database-table-name
