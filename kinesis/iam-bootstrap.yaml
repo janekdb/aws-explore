@@ -106,7 +106,9 @@ Resources:
                   - logs:TagResource
                   - logs:UntagResource
                   - logs:ListTagsForResource
-                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/explore-kinesis-*:*'
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/explore-kinesis-*:*'
+                  - !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/kinesisfirehose/explore-kinesis-*:*'
               - Sid: ListLogGroups
                 Effect: Allow
                 Action:
@@ -176,6 +178,21 @@ Resources:
                 Resource:
                   - !Sub 'arn:${AWS::Partition}:s3tables:${AWS::Region}:${AWS::AccountId}:bucket/explore-kinesis-*'
                   - !Sub 'arn:${AWS::Partition}:s3tables:${AWS::Region}:${AWS::AccountId}:bucket/explore-kinesis-*/table/*'
+
+              # Amazon Data Firehose delivery streams (Iceberg → S3 Tables)
+              - Sid: ManageFirehose
+                Effect: Allow
+                Action:
+                  - firehose:CreateDeliveryStream
+                  - firehose:DeleteDeliveryStream
+                  - firehose:DescribeDeliveryStream
+                  - firehose:UpdateDestination
+                  - firehose:TagDeliveryStream
+                  - firehose:UntagDeliveryStream
+                  - firehose:ListTagsForDeliveryStream
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:firehose:${AWS::Region}:${AWS::AccountId}:deliverystream/${AppName}-*'
+
 
 Outputs:
   RoleArn:
