@@ -34,10 +34,10 @@ Resources:
               Type: string
               Required: true
             - Name: temperature
-              Type: float
+              Type: decimal(4, 1)
               Required: true
             - Name: wind_speed
-              Type: float
+              Type: decimal(3, 1)
               Required: true
       Tags:
         - Key: project
