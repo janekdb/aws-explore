@@ -102,6 +102,8 @@ Resources:
                 Action:
                   - logs:CreateLogGroup
                   - logs:DeleteLogGroup
+                  - logs:CreateLogStream
+                  - logs:DeleteLogStream
                   - logs:PutRetentionPolicy
                   - logs:TagResource
                   - logs:UntagResource
