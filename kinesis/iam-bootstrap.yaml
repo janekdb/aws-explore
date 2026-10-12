@@ -194,7 +194,13 @@ Resources:
                   - firehose:ListTagsForDeliveryStream
                 Resource:
                   - !Sub 'arn:${AWS::Partition}:firehose:${AWS::Region}:${AWS::AccountId}:deliverystream/${AppName}-*'
-
+              - Sid: ManageLakeFormationGrants
+                Effect: Allow
+                Action:
+                  - lakeformation:GrantPermissions
+                  - lakeformation:RevokePermissions
+                  - lakeformation:ListPermissions
+                Resource: '*'
 
 Outputs:
   RoleArn:
