@@ -202,6 +202,19 @@ Resources:
                   - lakeformation:ListPermissions
                 Resource: '*'
 
+              - Sid: ReadCatalogForLakeFormationGrants
+                Effect: Allow
+                Action:
+                  - glue:GetCatalog
+                  - glue:GetDatabase
+                  - glue:GetTable
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog'
+                  - !Sub 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog/s3tablescatalog'
+                  - !Sub 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog/s3tablescatalog/${AppName}-*'
+                  - !Sub 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/s3tablescatalog/${AppName}-*/*'
+                  - !Sub 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/s3tablescatalog/${AppName}-*/*/*'                
+
 Outputs:
   RoleArn:
     Value: !GetAtt CfnExecutionRole.Arn
