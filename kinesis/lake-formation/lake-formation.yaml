@@ -1,0 +1,63 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Role Lake Formation assumes to vend credentials for S3 Tables (federated s3tablescatalog)
+
+Resources:
+
+  LakeFormationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: explore-kinesis-lake-formation
+      Description: Registered with Lake Formation for arn:aws:s3tables:REGION:ACCOUNT:bucket/*
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lakeformation.amazonaws.com
+            Action:
+              - sts:AssumeRole
+              - sts:SetContext
+              - sts:SetSourceIdentity
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: S3TablesDataAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ListTableBuckets
+                Effect: Allow
+                Action:
+                  - s3tables:ListTableBuckets
+                Resource: '*'
+
+              - Sid: TableBucketDataAccess
+                Effect: Allow
+                Action:
+                  - s3tables:CreateTableBucket
+                  - s3tables:GetTableBucket
+                  - s3tables:DeleteTableBucket
+                  - s3tables:CreateNamespace
+                  - s3tables:GetNamespace
+                  - s3tables:ListNamespaces
+                  - s3tables:DeleteNamespace
+                  - s3tables:CreateTable
+                  - s3tables:GetTable
+                  - s3tables:ListTables
+                  - s3tables:RenameTable
+                  - s3tables:DeleteTable
+                  - s3tables:GetTableMetadataLocation
+                  - s3tables:UpdateTableMetadataLocation
+                  - s3tables:GetTableData
+                  - s3tables:PutTableData
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:s3tables:${AWS::Region}:${AWS::AccountId}:bucket/explore-kinesis-*'
+                  - !Sub 'arn:${AWS::Partition}:s3tables:${AWS::Region}:${AWS::AccountId}:bucket/explore-kinesis-*/table/*'
+      Tags:
+        - Key: project
+          Value: explore-kinesis
+
+Outputs:
+  RoleArn:
+    Value: !GetAtt LakeFormationRole.Arn
