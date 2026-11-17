@@ -35,3 +35,14 @@ aws cloudformation deploy \
   --parameter-overrides PublisherFunctionArn="$PUB_ARN" \
   --tags project=explore-kinesis \
   --no-fail-on-empty-changeset
+
+# ---- Summary ----------------------------------------------------------------
+
+printf '\n>>> %s\n' "Stack outputs"
+
+aws cloudformation describe-stacks \
+  --stack-name explore-kinesis-storage \
+  --region "$REGION" \
+  --query "Stacks[0].Outputs" \
+  --output table \
+  --no-cli-pager
