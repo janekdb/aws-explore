@@ -10,13 +10,16 @@
 # Steps (each imports from earlier ones):
 #   foundations    permissions boundary                  (your credentials)
 #   cfn-bootstrap  CFN exec role                         (your credentials)
+#   lake-formation LF registration role; registers S3 Tables with LF and
+#                  removes IAM_ALLOWED_PRINCIPALS catalog defaults - must
+#                  precede database                      (your credentials)
 #   storage-1      buckets + stream; no S3 -> Lambda notification yet,
 #                  because the publisher does not exist
 #   app            Lambdas (import inputs bucket + stream)
 #   storage-2      storage.sh again: now finds PublisherFunctionArn and
 #                  wires the inputs bucket to the publisher (HasPublisher)
 #   database       S3 Tables bucket, namespace, table
-#   firehose       stream -> Iceberg table, plus the LF grant
+#   firehose       stream -> Iceberg table, plus the LF grants
 #
 # Usage:
 #   ./deploy-stacks.sh                  # all steps
@@ -33,10 +36,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Parallel arrays (bash 3.2 has no associative arrays):
 # step name | directory | script | stack it deploys
-STEP_NAMES=( foundations      cfn-bootstrap    storage-1  app     storage-2  database     firehose     )
-STEP_DIRS=(  .                .                .          app     .          database     firehose     )
-STEP_SCRIPTS=(foundations.sh  iam-bootstrap.sh storage.sh app.sh  storage.sh database.sh  firehose.sh  )
-STEP_STACKS=( foundations     cfn-bootstrap    storage    app     storage    database     firehose     )
+STEP_NAMES=( foundations      cfn-bootstrap    lake-formation    storage-1  app     storage-2  database     firehose     )
+STEP_DIRS=(  .                .                lake-formation    .          app     .          database     firehose     )
+STEP_SCRIPTS=(foundations.sh  iam-bootstrap.sh lake-formation.sh storage.sh app.sh  storage.sh database.sh  firehose.sh  )
+STEP_STACKS=( foundations     cfn-bootstrap    lake-formation    storage    app     storage    database     firehose     )
 
 # ---- Helpers ----------------------------------------------------------------
 
