@@ -1,5 +1,5 @@
 REGION=eu-west-1
-for S in foundations cfn-bootstrap storage app database firehose; do
+for S in foundations cfn-bootstrap lake-formation storage app database firehose; do
   printf '%-32s ' "explore-kinesis-$S"
   aws cloudformation describe-stacks \
     --stack-name "explore-kinesis-$S" --region "$REGION" \
