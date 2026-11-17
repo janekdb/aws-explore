@@ -201,6 +201,12 @@ Resources:
                   - lakeformation:RevokePermissions
                   - lakeformation:ListPermissions
                 Resource: '*'
+              
+              - Sid: ReadTableDataForLakeFormationGrants
+                Effect: Allow
+                Action:
+                  - lakeformation:GetDataAccess
+                Resource: '*'
 
               - Sid: ReadCatalogForLakeFormationGrants
                 Effect: Allow
