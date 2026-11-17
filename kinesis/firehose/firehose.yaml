@@ -1,0 +1,178 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Firehose resource for streaming weather records into the weather table
+
+Resources:
+
+  # -- Logs --
+  FirehoseLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/kinesisfirehose/explore-kinesis-weather
+      RetentionInDays: 14
+
+  DestinationDeliveryLogStream:
+    Type: AWS::Logs::LogStream
+    Properties:
+      LogGroupName: !Ref FirehoseLogGroup
+      LogStreamName: DestinationDelivery
+
+  WeatherDeliveryStream:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    # No property references the LF grant, so without this the stream can be created before it can access the table
+    DependsOn: FirehoseTableGrant
+    Properties:
+      DeliveryStreamName: explore-kinesis-weather
+      DeliveryStreamType: KinesisStreamAsSource
+      KinesisStreamSourceConfiguration:
+        KinesisStreamARN: !ImportValue explore-kinesis-storage-stream-arn
+        RoleARN: !GetAtt FirehoseRole.Arn
+      IcebergDestinationConfiguration:
+        RoleARN: !GetAtt FirehoseRole.Arn
+        CatalogConfiguration:
+          CatalogARN: !Sub
+            - 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog/s3tablescatalog/${TableBucketName}'
+            - TableBucketName: !ImportValue explore-kinesis-database-table-bucket-name
+        DestinationTableConfigurationList:
+          - DestinationDatabaseName: !ImportValue explore-kinesis-database-namespace
+            DestinationTableName: !ImportValue explore-kinesis-database-table-name
+            S3ErrorOutputPrefix: !Sub
+              - 'table-errors/${TableName}/'
+              - TableName: !ImportValue explore-kinesis-database-table-name
+        AppendOnly: true
+        BufferingHints:
+          IntervalInSeconds: 60
+          SizeInMBs: 1
+        RetryOptions:
+          DurationInSeconds: 300
+        S3BackupMode: FailedDataOnly
+        S3Configuration:
+          BucketARN: !GetAtt ErrorBucket.Arn
+          RoleARN: !GetAtt FirehoseRole.Arn
+          ErrorOutputPrefix: 'delivery-errors/'
+          Prefix: 'backup/'
+          BufferingHints:
+            IntervalInSeconds: 60
+            SizeInMBs: 1
+          CompressionFormat: GZIP
+        CloudWatchLoggingOptions:
+          Enabled: true
+          LogGroupName: !Ref FirehoseLogGroup
+          LogStreamName: !Ref DestinationDeliveryLogStream
+      Tags:
+        - Key: project
+          Value: explore-kinesis
+
+  FirehoseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: explore-kinesis-firehose-delivery
+      PermissionsBoundary: !ImportValue explore-kinesis-boundary-arn
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub 'arn:${AWS::Partition}:firehose:${AWS::Region}:${AWS::AccountId}:deliverystream/explore-kinesis-*'
+      Policies:
+        - PolicyName: FirehoseDeliveryInlinePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadSourceStream
+                Effect: Allow
+                Action:
+                  - kinesis:DescribeStream
+                  - kinesis:GetShardIterator
+                  - kinesis:GetRecords
+                  - kinesis:ListShards
+                Resource: !ImportValue explore-kinesis-storage-stream-arn
+
+              - Sid: ResolveCatalogTable
+                Effect: Allow
+                Action:
+                  - glue:GetDatabase
+                  - glue:GetTable
+                  - glue:UpdateTable
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog'
+                  - !Sub 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog/s3tablescatalog'
+                  - !Sub
+                    - 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog/s3tablescatalog/${Bucket}'
+                    - Bucket: !ImportValue explore-kinesis-database-table-bucket-name
+                  - !Sub
+                    - 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/s3tablescatalog/${Bucket}/${Namespace}'
+                    - Bucket: !ImportValue explore-kinesis-database-table-bucket-name
+                      Namespace: !ImportValue explore-kinesis-database-namespace
+                  - !Sub
+                    - 'arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/s3tablescatalog/${Bucket}/${Namespace}/${Table}'
+                    - Bucket: !ImportValue explore-kinesis-database-table-bucket-name
+                      Namespace: !ImportValue explore-kinesis-database-namespace
+                      Table: !ImportValue explore-kinesis-database-table-name
+
+              - Sid: TableDataAccess
+                Effect: Allow
+                Action:
+                  - lakeformation:GetDataAccess
+                Resource: '*'
+
+              - Sid: WriteErrorBucket
+                Effect: Allow
+                Action:
+                  - s3:AbortMultipartUpload
+                  - s3:GetBucketLocation
+                  - s3:GetObject
+                  - s3:ListBucket
+                  - s3:ListBucketMultipartUploads
+                  - s3:PutObject
+                Resource:
+                  - !GetAtt ErrorBucket.Arn
+                  - !Sub '${ErrorBucket.Arn}/*'
+
+              - Sid: WriteDeliveryLogs
+                Effect: Allow
+                Action:
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${FirehoseLogGroup}:log-stream:${DestinationDeliveryLogStream}'
+      Tags:
+        - Key: project
+          Value: explore-kinesis
+
+  FirehoseTableGrant:
+    Type: AWS::LakeFormation::PrincipalPermissions
+    Properties:
+      Principal:
+        DataLakePrincipalIdentifier: !GetAtt FirehoseRole.Arn
+      Resource:
+        Table:
+          CatalogId: !Sub
+            - '${AWS::AccountId}:s3tablescatalog/${Bucket}'
+            - Bucket: !ImportValue explore-kinesis-database-table-bucket-name
+          DatabaseName: !ImportValue explore-kinesis-database-namespace
+          Name: !ImportValue explore-kinesis-database-table-name
+      Permissions: [ALL]
+      PermissionsWithGrantOption: []
+
+  ErrorBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketNamePrefix: explore-kinesis-firehose-errors
+      BucketNamespace: account-regional
+      Tags:
+        - Key: project
+          Value: explore-kinesis
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldObjects
+            Status: Enabled
+            ExpirationInDays: 2
+          - Id: Cleanup
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+

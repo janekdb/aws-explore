@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # Delete the cost-generating explore-kinesis stacks, in dependency order.
-# foundations and cfn-bootstrap are left in place.
+# foundations, cfn-bootstrap and lake-formation are left in place
+# (no cost; lake-formation has its own delete-lake-formation.sh).
 
 set -euo pipefail
 
@@ -77,6 +78,10 @@ for S in "${STACKS[@]}"; do
       log "$STACK: $STATUS - deleting"
       case "$S" in
         firehose) empty_stack_bucket "$STACK" ErrorBucket ;;
+        storage)
+          empty_stack_bucket "$STACK" ExploreKinesisArtifactBucket
+          empty_stack_bucket "$STACK" ExploreKinesisInputBucket
+          ;;
       esac
       aws cloudformation delete-stack --stack-name "$STACK" --region "$REGION"
       ;;
